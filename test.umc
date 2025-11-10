@@ -1,0 +1,26 @@
+#include <stdlib.h>
+#include <umka_api.h>
+
+typedef struct div_result {
+	long quot, rem;
+} div_result;
+
+static int foo( void );
+static inline div_result * divide( long a, long b );
+
+#MODULE   bar
+#FUNCTION foo    int        void
+#FUNCTION divide div_result a:int, b:int
+
+int foo( void ) {
+	return 69;
+}
+
+div_result * divide( long a, long b ) {
+	div_result * res = malloc( sizeof( div_result ) );
+	*res = (div_result){
+		a / b,
+		a % b
+	};
+	return res;
+}
