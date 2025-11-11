@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <ctype.h>
 
+#include <libtcc.h>
 #include "umka_api.h"
 
 #define UMCPPVER               "v0.1.0"
@@ -49,11 +50,11 @@ size_t modcount;
 
 char const * getUmkaStackType( char const * type );
 char const * getUmkaCType( char const * type );
-char * genUmkaFunction( char const * name, char const * rettype, char ** params, size_t params_cnt );
+char * genUmkaFunction( char const * name, char const * rettype, char ** params, size_t params_cnt, size_t cur_line );
 int processMethod( char * line );
-int processFunction( char * line );
+int processFunction( char * line, size_t cur_line );
 int processModule( char * line );
-int processLine( char * line );
+int processLine( char * line, size_t cur_line );
 int preprocess( void );
 char const * getExtension( char const * file );
 int determineProcess( void );
@@ -70,13 +71,22 @@ int main( int argc, char * argv[] ) {
 	int process = determineProcess();
 	switch( process ) {
 	case PROCESS_PREPROCESS:
-		return preprocess();
+		preprocess();
+		break;
 	case PROCESS_HEADER:
 		printf( "Header parsing is not implemented yet!\n" );
 		return 0;
 	default:
-		printf( "Input file is not a known format!\n" );
+		printf( "Input file '%s' is not a known format!\n", infile );
 		return -1;
+	}
+
+	if ( cccl != NULL ) {
+		PRINT( "Execute cmd: %s\n", cccl );
+		int status = system( cccl );
+		PRINT( "cccl result: %d\n", status );
+	} else {
+		printf( "No compile command provided, finished." );
 	}
 
 	return 0;
@@ -92,6 +102,18 @@ static inline bool isalnum_( int c ) {
 
 static inline bool _strbgn( char const * str, char const * begin ) {
 	return strncmp( str, begin, strlen( begin ) ) == 0;
+}
+
+static inline bool _strapp( char * str, char const * append, size_t * cursor ) {
+	if ( !cursor ) {
+		return false;
+	}
+
+	char * begin = str + *cursor;
+	size_t len = strlen( append );
+	memcpy( begin, append, len );
+	*cursor = *cursor + len;
+	return true;
 }
 
 char const * getUmkaStackType( char const * type ) {
@@ -114,62 +136,84 @@ char const * getUmkaCType( char const * type ) {
 	} else if ( strcmp( type, "uint" ) == 0 ) {
 		return "uint64_t";
 	} else if ( strcmp( type, "real" ) == 0 ) {
-		return "float";
-	} else if ( strcmp( type, "real32" ) == 0 ) {
 		return "double";
+	} else if ( strcmp( type, "real32" ) == 0 ) {
+		return "float";
 	} else {
 		return "void *";
 	}
 }
-char * genUmkaFunction( char const * name, char const * rettype, char ** params, size_t params_cnt ) {
-	(void)rettype;
+char * genUmkaFunction( char const * name, char const * rettype, char ** params, size_t params_cnt, size_t cur_line ) {
+	size_t curs = 0;
 	char * umc = calloc( UMCPPMAXLINEWIDTH, 1 );
-	strcat( umc, "UMKA_EXPORT void umc_");
-	strcat( umc, name );
-	strcat( umc, "( UmkaStackSlot * params, UmkaStackSlot * result ) {\n\tUmka * umka = umkaGetInstance( result );\n\tUmkaAPI * api = umkaGetAPI( umka );\n" );
+	char lnum[128] = {0};
+	sprintf( lnum, "#line %zu\n", cur_line );
+	_strapp( umc, "UMKA_EXPORT void umc_", &curs );
+	_strapp( umc, name, &curs );
+	_strapp( umc, "( UmkaStackSlot * params, UmkaStackSlot * result ) {\n", &curs );
+	_strapp( umc, lnum, &curs);
+	_strapp( umc, "\tUmka * umka = umkaGetInstance( result );\n", &curs );
+	_strapp( umc, lnum, &curs);
+	_strapp( umc, "\tUmkaAPI * api = umkaGetAPI( umka );\n", &curs );
+	_strapp( umc, lnum, &curs);
 
+	bool has_params = false;
 	if ( strcmp( params[0], "void" ) != 0 ) {
+		has_params = true;
 		for ( size_t i = 0; i < params_cnt; ++i ) {
 			char * sep = strchr( params[i], ':' );
-			strcat( umc, "\t" );
-			strcat( umc, getUmkaCType( sep ? sep + 1 : "" ) );
-			strcat( umc, " " );
-			strncat( umc, params[i], (unsigned)(sep - params[i]) );
-			strcat( umc, " = umkaGetParam( params, " );
+			_strapp( umc, "\t", &curs );
+			_strapp( umc, getUmkaCType( sep ? sep + 1 : "" ), &curs );
+			_strapp( umc, " ", &curs );
+			strncat( umc + curs, params[i], (unsigned)(sep - params[i]) );
+			curs += (unsigned)(sep - params[i]);
+			_strapp( umc, " = api->umkaGetParam( params, ", &curs );
 			char num[32] = {0};
 			sprintf( num, "%zu", i );
-			strcat( umc, num );
-			strcat( umc, " )->" );
-			strcat( umc, getUmkaStackType( sep+1 ) );
-			strcat( umc, "Val;\n" );
+			_strapp( umc, num, &curs );
+			_strapp( umc, " )->", &curs );
+			_strapp( umc, getUmkaStackType( sep+1 ), &curs );
+			_strapp( umc, "Val;\n", &curs );
+			_strapp( umc, lnum, &curs);
 		}
 	} else {
-		strcat( umc, "\t(void)(params);\n" );
+		_strapp( umc, "\t(void)(params);\n", &curs );
+		_strapp( umc, lnum, &curs);
 	}
 
+	bool has_return = false;
 	if ( strcmp( rettype, "void" ) != 0 ) {
-		strcat( umc, "\tresult->" );
-		strcat( umc, getUmkaStackType( rettype ) );
-		strcat( umc, "Val = " );
-		strcat( umc, name );
-		strcat( umc, "(" );
+		has_return = true;
+		_strapp( umc, "\tapi->umkaGetResult(params, result)->", &curs );
+		_strapp( umc, getUmkaStackType( rettype ), &curs );
+		_strapp( umc, "Val = ", &curs );
+		_strapp( umc, name, &curs );
+		_strapp( umc, "(", &curs );
 
 		if ( strcmp( params[0], "void" ) != 0 ) {
 			for ( size_t i = 0; i < params_cnt; ++i ) {
 				if ( i != 0 ) {
-					strcat( umc, ", " );
+					_strapp( umc, ", ", &curs );
 				}
 				char * sep = strchr( params[i], ':' );
-				strcat( umc, " " );
-				strncat( umc, params[i], (unsigned)(sep - params[i]) );
+				_strapp( umc, " ", &curs );
+				strncat( umc + curs, params[i], (unsigned)(sep - params[i]) );
+				curs += (unsigned)(sep - params[i]);
 			}
 		}
-		strcat( umc, " );\n" );
+		_strapp( umc, " );\n", &curs );
 	} else {
-		strcat( umc, "\t(void)(result);\n" );
+		_strapp( umc, "\t(void)(result);\n", &curs );
 	}
 
-	strcat( umc, "}\n" );
+	_strapp( umc, lnum, &curs);
+
+	if ( !has_params && !has_return ) {
+		_strapp( umc, "\t(void)(api);\n", &curs );
+		_strapp( umc, lnum, &curs);
+	}
+
+	_strapp( umc, "}\n", &curs );
 
 	return umc;
 }
@@ -179,7 +223,7 @@ int processMethod( char * line ) {
 	return DIRECTIVE_UNKNOWN;
 }
 
-int processFunction( char * line ) {
+int processFunction( char * line, size_t cur_line ) {
 	PRINT( "Found Function in line:\n%s\n", line );
 	ModuleState * mod = mods + modcount - 1;
 	(void)mod;
@@ -231,13 +275,13 @@ int processFunction( char * line ) {
 		last = line;
 
 		params[idx++] = strndup( first, (unsigned)(last - first) );
-		PRINT( "Function parameter %zu: [%p]%s\n", idx, (void *)params[idx-1], params[idx-1] );
+		PRINT( "Function parameter %zu: %s\n", idx, params[idx-1] );
 
 		sep_found = *line == ',';
 		++line;
 	} while ( sep_found );
 
-	char * func = genUmkaFunction( name, rettype, params, idx );
+	char * func = genUmkaFunction( name, rettype, params, idx, cur_line );
 	memmove( origin, func, UMCPPMAXLINEWIDTH );
 	free( func );
 	return DIRECTIVE_FUNCTION;
@@ -270,13 +314,13 @@ int processModule( char * line ) {
 	return DIRECTIVE_MODULE;
 }
 
-int processLine( char * line ) {
+int processLine( char * line, size_t cur_line ) {
 	if ( *line != '#' ) {
 		return DIRECTIVE_NODIRECTIVE;
 	} else if ( _strbgn( line, UMCPPDIRECTIVEMODULE" " ) ) {
 		return processModule( line );
 	} else if ( _strbgn( line, UMCPPDIRECTIVEFUNCTION" " ) ) {
-		return processFunction( line );
+		return processFunction( line, cur_line );
 	} else if ( _strbgn( line, "#METHOD" ) ) {
 		return processMethod( line );
 	} else {
@@ -306,7 +350,7 @@ int preprocess( void ) {
 	char line[UMCPPMAXLINEWIDTH];
 	int proc_last = DIRECTIVE_NODIRECTIVE;
 	while( fgets( line, UMCPPMAXLINEWIDTH, fin ) ) {
-		int proc = processLine( line );
+		int proc = processLine( line, line_cur );
 		switch( proc ) {
 		case DIRECTIVE_MODULE: case DIRECTIVE_FUNCTION:
 			fprintf( fout, "#line %zu\n", line_cur );
@@ -358,18 +402,22 @@ int determineProcess( void ) {
 	}
 
 	if ( strcmp( ext, ".h" ) == 0 ) {
-		size_t len = strlen( infile );
-		char * out = malloc( len + 4 );
-		outfile = strcpy( out, infile );
-		memcpy( out + len - 2, "um.c", 5);
+		if ( !outfile ) {
+			size_t len = strlen( infile );
+			char * out = malloc( len + 4 );
+			outfile = strcpy( out, infile );
+			memcpy( out + len - 2, "um.c", 5);
+		}
 		return PROCESS_HEADER;
 	}
 
 	if ( strcmp( ext, ".umc" ) == 0 ) {
-		size_t len = strlen( infile );
-		char * out = malloc( len + 2 );
-		outfile = strcpy( out, infile );
-		memcpy( out + len - 1, ".c", 3);
+		if ( !outfile ) {
+			size_t len = strlen( infile );
+			char * out = malloc( len + 2 );
+			outfile = strcpy( out, infile );
+			memcpy( out + len - 1, ".c", 3);
+		}
 		return PROCESS_PREPROCESS;
 	}
 
@@ -383,18 +431,24 @@ bool parseArgs( int argc, char * argv[] ) {
 
 	int args = 1;
 	if ( strcmp( argv[args], "-o" ) == 0 ) {
-		if ( argc < 3 ) {
+		if ( args + 1 == argc ) {
 			return false;
 		}
 
 		outfile = strdup( argv[++args] );
+
+		if ( args + 1 == argc ) {
+			return false;
+		}
+
 		infile = argv[++args];
 	} else {
 		infile = argv[args];
 	}
-	if ( argc > args + 1 ) {
-		return false;
-	} else if ( argc == args + 1 ) {
+	++args;
+	PRINT( "Argument: %s", argv[args]);
+
+	if ( args < argc ) {
 		cccl = argv[args];
 	}
 

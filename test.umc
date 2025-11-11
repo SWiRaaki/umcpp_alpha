@@ -30,6 +30,5 @@ div_result * divide( long a, long b ) {
 }
 
 void hello( void ) {
-	div_result * res = divide( 100, foo() );
 	printf( "Hello, World!\n" );
 }
