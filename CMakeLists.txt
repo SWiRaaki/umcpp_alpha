@@ -31,7 +31,8 @@ elseif( UNIX )
 	set( CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g2" )
 	set( CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3" )
 	set( OS_LIBS c m )
-	set( OS_SRC
+	set(
+		OS_SRC
 	)
 else()
 	set( OS_LIBS "" )
@@ -45,8 +46,8 @@ add_library(
 )
 set_target_properties(
 	umka PROPERTIES
-	IMPORTED_LOCATION             "/usr/local/lib/libumka.a"
-	INTERFACE_INCLUDE_DIRECTORIES "/usr/local/include"
+	IMPORTED_LOCATION             "$ENV{HOME}/pkg/umka/libumka.a"
+	INTERFACE_INCLUDE_DIRECTORIES "$ENV{HOME}/pkg/umka/include"
 )
 add_executable(
 	umcpp

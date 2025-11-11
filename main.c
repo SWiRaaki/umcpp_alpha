@@ -143,6 +143,8 @@ char * genUmkaFunction( char const * name, char const * rettype, char ** params,
 			strcat( umc, getUmkaStackType( sep+1 ) );
 			strcat( umc, "Val;\n" );
 		}
+	} else {
+		strcat( umc, "\t(void)(params);\n" );
 	}
 
 	if ( strcmp( rettype, "void" ) != 0 ) {
@@ -163,6 +165,8 @@ char * genUmkaFunction( char const * name, char const * rettype, char ** params,
 			}
 		}
 		strcat( umc, " );\n" );
+	} else {
+		strcat( umc, "\t(void)(result);\n" );
 	}
 
 	strcat( umc, "}\n" );
@@ -300,6 +304,7 @@ int preprocess( void ) {
 	size_t line_cur = 1;
 	fprintf( fout, "#line %zu \"%s\"\n", line_cur, infile );
 	char line[UMCPPMAXLINEWIDTH];
+	int proc_last = DIRECTIVE_NODIRECTIVE;
 	while( fgets( line, UMCPPMAXLINEWIDTH, fin ) ) {
 		int proc = processLine( line );
 		switch( proc ) {
@@ -307,8 +312,12 @@ int preprocess( void ) {
 			fprintf( fout, "#line %zu\n", line_cur );
 			break;
 		default:
+			if ( proc_last == DIRECTIVE_MODULE || proc_last == DIRECTIVE_FUNCTION ) {
+				fprintf( fout, "#line %zu\n", line_cur );
+			}
 			break;
 		}
+		proc_last = proc;
 		if ( fputs( line, fout ) < 0 ) {
 			ret = ferror( fout );
 			printf( "Failed to read line from input file: %s\n", strerror( ret ) );

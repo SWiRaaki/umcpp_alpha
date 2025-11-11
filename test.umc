@@ -1,16 +1,20 @@
 #include <stdlib.h>
+#include <stdio.h>
+
 #include <umka_api.h>
 
 typedef struct div_result {
 	long quot, rem;
 } div_result;
 
-static int foo( void );
+static inline int foo( void );
 static inline div_result * divide( long a, long b );
+static inline void hello( void );
 
 #MODULE   bar
 #FUNCTION foo    int        void
 #FUNCTION divide div_result a:int, b:int
+#FUNCTION hello  void       void
 
 int foo( void ) {
 	return 69;
@@ -23,4 +27,9 @@ div_result * divide( long a, long b ) {
 		a % b
 	};
 	return res;
+}
+
+void hello( void ) {
+	div_result * res = divide( 100, foo() );
+	printf( "Hello, World!\n" );
 }
