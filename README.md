@@ -1,5 +1,5 @@
 # What is umcpp
-The name 'umcpp' stands for __<ins>um</ins>__ka __<ins>c</ins>__ __<ins>p</ins>__re__<ins>p</ins>__rocessor
+The name 'umcpp' stands for **<ins>um</ins>**ka **<ins>c</ins>** **<ins>p</ins>**re**<ins>p</ins>**rocessor
 The preprocessor is intented to generate interfaces between umka scripts and c functions. It will either pregenerate APIs from headers or generate interface functions and scripts from within c source files.
 
 # What does it 'process'
