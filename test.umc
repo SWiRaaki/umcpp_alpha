@@ -30,5 +30,5 @@ div_result * divide( long a, long b ) {
 }
 
 void hello( void ) {
-	printf( "Hello, World!\n" );
+	printf( "Hello from umi!\n" );
 }
